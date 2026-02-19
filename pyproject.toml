@@ -1,0 +1,40 @@
+[project]
+name = "polars-lineage"
+version = "0.1.0"
+authors = [
+    { name = "David Zucker", email = "david@programmableproduction.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "polars>=1.38.1",
+    "pydantic>=2.12.5",
+    "typer>=0.24.0",
+]
+
+[project.scripts]
+polars-lineage = "polars_lineage.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.10.4,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "ruff>=0.15.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["polars_lineage"]
