@@ -33,6 +33,18 @@ class DatasetRef(BaseModel):
     def fqn(self) -> str:
         return ".".join([self.service, self.database, self.schema_name, self.table])
 
+    @classmethod
+    def from_fqn(cls, value: str) -> "DatasetRef":
+        parts = value.split(".")
+        if len(parts) != 4:
+            raise ValueError("dataset FQN must use service.database.schema.table")
+        return cls(
+            service=parts[0],
+            database=parts[1],
+            schema=parts[2],
+            table=parts[3],
+        )
+
 
 class ColumnRef(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")

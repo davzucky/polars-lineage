@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+import re
+
+from polars_lineage.config import MappingConfig
+from polars_lineage.extractor.expr_parser import parse_expression
+from polars_lineage.ir import ColumnLineage, ColumnRef, DatasetRef
+
+_DF_COLUMNS_PATTERN = re.compile(r"DF \[(?P<columns>[^\]]+)\]")
+_BOX_CHARS = re.compile(r"[┌┐└┘├┤┬┴─╭╮╯╰│]+")
+_ALIAS_PATTERN = re.compile(r'\.alias\("([^"]+)"\)')
+_COLUMN_PATTERN = re.compile(r'col\("([^"]+)"\)')
+_EXPR_BLOCK_PATTERN = re.compile(
+    r"expression:\s*(?P<body>.*?)"
+    r"(?=(?:expression:|aggregate by:|FROM:|left on:|right on:|LEFT PLAN:|RIGHT PLAN:|$))"
+)
+_AGG_BY_PATTERN = re.compile(
+    r"aggregate by:\s*(?P<body>.*?)"
+    r"(?=(?:expression:|FROM:|left on:|right on:|LEFT PLAN:|RIGHT PLAN:|$))"
+)
+
+
+def _normalize_block(value: str) -> str:
+    text = _BOX_CHARS.sub(" ", value)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _column_texts_from_tree(plan: str) -> dict[int, str]:
+    column_tokens: dict[int, list[str]] = {}
+    for raw_line in plan.splitlines():
+        if "│" not in raw_line:
+            continue
+        parts = raw_line.split("│")
+        if len(parts) < 3:
+            continue
+        for column_index, part in enumerate(parts[2:], start=0):
+            cleaned = _normalize_block(part)
+            if not cleaned or cleaned.isdigit():
+                continue
+            column_tokens.setdefault(column_index, []).append(cleaned)
+
+    return {column_index: " ".join(tokens) for column_index, tokens in column_tokens.items()}
+
+
+def _parse_datasets(
+    column_texts: dict[int, str], mapping: MappingConfig
+) -> tuple[DatasetRef, dict[str, DatasetRef]]:
+    source_datasets = [DatasetRef.from_fqn(value) for value in mapping.sources.values()]
+    if not source_datasets:
+        raise ValueError("at least one source dataset is required")
+
+    destination_dataset = DatasetRef.from_fqn(mapping.destination_table)
+    df_matches: list[tuple[int, re.Match[str]]] = []
+    for column_index, text in column_texts.items():
+        match = _DF_COLUMNS_PATTERN.search(text)
+        if match:
+            df_matches.append((column_index, match))
+
+    if not df_matches:
+        return destination_dataset, {}
+
+    namespace_map: dict[str, DatasetRef] = {}
+    for index, (_, match) in enumerate(df_matches):
+        dataset = source_datasets[min(index, len(source_datasets) - 1)]
+        column_values = [item.strip().strip('"') for item in match.group("columns").split(",")]
+        for column in column_values:
+            namespace_map.setdefault(column, dataset)
+
+    if len(source_datasets) >= 2:
+        for _, match in df_matches:
+            text = match.string
+            if "LEFT PLAN:" in text:
+                dataset = source_datasets[0]
+            elif "RIGHT PLAN:" in text:
+                dataset = source_datasets[1]
+            else:
+                continue
+            column_values = [item.strip().strip('"') for item in match.group("columns").split(",")]
+            for column in column_values:
+                namespace_map.setdefault(column, dataset)
+
+    return destination_dataset, namespace_map
+
+
+def extract_plan_lineage(plan: str, mapping: MappingConfig) -> list[ColumnLineage]:
+    column_texts = _column_texts_from_tree(plan)
+    destination_dataset, namespace_map = _parse_datasets(column_texts, mapping)
+
+    parsed_blocks: list[tuple[str, str]] = []
+    for column_text in column_texts.values():
+        for expression_match in _EXPR_BLOCK_PATTERN.finditer(column_text):
+            expression_text = expression_match.group("body").strip()
+            if not expression_text:
+                continue
+            alias_match = _ALIAS_PATTERN.search(expression_text)
+            if alias_match:
+                destination_column = alias_match.group(1)
+                expression = expression_text[: alias_match.start()].strip()
+            else:
+                destination_match = _COLUMN_PATTERN.search(expression_text)
+                if destination_match is None:
+                    continue
+                destination_column = destination_match.group(1)
+                expression = expression_text
+            parsed_blocks.append((destination_column, expression))
+
+        for aggregate_match in _AGG_BY_PATTERN.finditer(column_text):
+            aggregate_text = aggregate_match.group("body")
+            for aggregate_column in _COLUMN_PATTERN.findall(aggregate_text):
+                parsed_blocks.append((aggregate_column, f'col("{aggregate_column}")'))
+
+    parsed_blocks = list(dict.fromkeys(parsed_blocks))
+
+    derived_columns = {destination_column for destination_column, _ in parsed_blocks}
+
+    lineage: list[ColumnLineage] = []
+    for destination_column, expression in parsed_blocks:
+        parsed = parse_expression(expression)
+
+        source_columns: list[ColumnRef] = []
+        for source_column_name in parsed.columns:
+            source_dataset = namespace_map.get(source_column_name)
+            if source_dataset is None:
+                if source_column_name in derived_columns:
+                    source_dataset = destination_dataset
+                else:
+                    raise ValueError(f"unresolved source column: {source_column_name}")
+            source_columns.append(ColumnRef(dataset=source_dataset, column=source_column_name))
+
+        lineage.append(
+            ColumnLineage(
+                from_columns=tuple(source_columns),
+                to_column=ColumnRef(dataset=destination_dataset, column=destination_column),
+                function=parsed.function,
+                confidence=parsed.confidence,
+            )
+        )
+
+    return sorted(lineage, key=lambda item: item.to_column.column)
