@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import yaml
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
@@ -23,6 +26,7 @@ class MappingConfig(BaseModel):
 
     sources: dict[str, str]
     destination_table: str
+    plan_path: Path | None = None
 
     @field_validator("destination_table")
     @classmethod
@@ -41,3 +45,13 @@ class MappingConfig(BaseModel):
                 raise ValueError(f"duplicate source alias after normalization: {normalized_alias}")
             normalized_sources[normalized_alias] = _validate_fqn(fqn)
         return normalized_sources
+
+
+def load_mapping_config(path: Path) -> MappingConfig:
+    parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(parsed, dict):
+        raise ValueError("mapping file must contain a YAML object")
+    config = MappingConfig.model_validate(parsed)
+    if config.plan_path is not None and not config.plan_path.is_absolute():
+        config = config.model_copy(update={"plan_path": path.parent / config.plan_path})
+    return config
