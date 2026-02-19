@@ -18,6 +18,14 @@ _AGG_BY_PATTERN = re.compile(
     r"aggregate by:\s*(?P<body>.*?)"
     r"(?=(?:expression:|FROM:|left on:|right on:|LEFT PLAN:|RIGHT PLAN:|$))"
 )
+_LEFT_JOIN_SIDE_PATTERN = re.compile(
+    r"left on:\s*(?P<body>.*?)"
+    r"(?=(?:right on:|LEFT PLAN:|RIGHT PLAN:|expression:|aggregate by:|FROM:|$))"
+)
+_RIGHT_JOIN_SIDE_PATTERN = re.compile(
+    r"right on:\s*(?P<body>.*?)"
+    r"(?=(?:LEFT PLAN:|RIGHT PLAN:|expression:|aggregate by:|FROM:|$))"
+)
 
 
 def _normalize_block(value: str) -> str:
@@ -43,49 +51,104 @@ def _column_texts_from_tree(plan: str) -> dict[int, str]:
     return {column_index: " ".join(tokens) for column_index, tokens in column_tokens.items()}
 
 
+def _parse_join_keys(column_texts: dict[int, str]) -> tuple[set[str], set[str]]:
+    left_join_keys: set[str] = set()
+    right_join_keys: set[str] = set()
+    for text in column_texts.values():
+        for side_match in _LEFT_JOIN_SIDE_PATTERN.finditer(text):
+            left_join_keys.update(_COLUMN_PATTERN.findall(side_match.group("body")))
+        for side_match in _RIGHT_JOIN_SIDE_PATTERN.finditer(text):
+            right_join_keys.update(_COLUMN_PATTERN.findall(side_match.group("body")))
+    return left_join_keys, right_join_keys
+
+
 def _parse_datasets(
     column_texts: dict[int, str], mapping: MappingConfig
-) -> tuple[DatasetRef, dict[str, DatasetRef]]:
-    source_datasets = [DatasetRef.from_fqn(value) for value in mapping.sources.values()]
+) -> tuple[
+    DatasetRef,
+    dict[str, tuple[DatasetRef, ...]],
+    set[str],
+    set[str],
+    DatasetRef | None,
+    DatasetRef | None,
+]:
+    source_by_alias = {alias: DatasetRef.from_fqn(fqn) for alias, fqn in mapping.sources.items()}
+    source_datasets = list(source_by_alias.values())
     if not source_datasets:
         raise ValueError("at least one source dataset is required")
 
+    combined_text = " ".join(column_texts.values())
+    join_count = len(re.findall(r"\bJOIN\b", combined_text))
+    if join_count > 1:
+        raise ValueError("multiple joins are not supported yet")
+    if join_count == 1 and not {"left", "right"}.issubset(source_by_alias):
+        raise ValueError("join plans require left/right source aliases in mapping.sources")
+
+    left_dataset = source_by_alias.get("left")
+    right_dataset = source_by_alias.get("right")
+    if left_dataset is None and source_datasets:
+        left_dataset = source_datasets[0]
+    if right_dataset is None and len(source_datasets) > 1:
+        right_dataset = source_datasets[1]
+
     destination_dataset = DatasetRef.from_fqn(mapping.destination_table)
+    left_join_keys, right_join_keys = _parse_join_keys(column_texts)
+
     df_matches: list[tuple[int, re.Match[str]]] = []
     for column_index, text in column_texts.items():
-        match = _DF_COLUMNS_PATTERN.search(text)
-        if match:
+        for match in _DF_COLUMNS_PATTERN.finditer(text):
             df_matches.append((column_index, match))
 
     if not df_matches:
-        return destination_dataset, {}
+        return destination_dataset, {}, left_join_keys, right_join_keys, left_dataset, right_dataset
 
-    namespace_map: dict[str, DatasetRef] = {}
-    for index, (_, match) in enumerate(df_matches):
-        dataset = source_datasets[min(index, len(source_datasets) - 1)]
+    namespace_map: dict[str, set[DatasetRef]] = {}
+    fallback_index = 0
+    for _, match in sorted(df_matches, key=lambda item: item[0]):
+        text = match.string
+
+        left_marker = text.rfind("LEFT PLAN:", 0, match.start())
+        right_marker = text.rfind("RIGHT PLAN:", 0, match.start())
+
+        if left_marker > right_marker and left_dataset is not None:
+            dataset = left_dataset
+        elif right_marker > left_marker and right_dataset is not None:
+            dataset = right_dataset
+        elif len(source_datasets) == 1:
+            dataset = source_datasets[0]
+        else:
+            dataset = source_datasets[min(fallback_index, len(source_datasets) - 1)]
+            fallback_index += 1
+
         column_values = [item.strip().strip('"') for item in match.group("columns").split(",")]
         for column in column_values:
-            namespace_map.setdefault(column, dataset)
+            namespace_map.setdefault(column, set()).add(dataset)
 
-    if len(source_datasets) >= 2:
-        for _, match in df_matches:
-            text = match.string
-            if "LEFT PLAN:" in text:
-                dataset = source_datasets[0]
-            elif "RIGHT PLAN:" in text:
-                dataset = source_datasets[1]
-            else:
-                continue
-            column_values = [item.strip().strip('"') for item in match.group("columns").split(",")]
-            for column in column_values:
-                namespace_map.setdefault(column, dataset)
+    normalized_map = {
+        column: tuple(sorted(candidates, key=lambda item: item.fqn))
+        for column, candidates in namespace_map.items()
+    }
 
-    return destination_dataset, namespace_map
+    return (
+        destination_dataset,
+        normalized_map,
+        left_join_keys,
+        right_join_keys,
+        left_dataset,
+        right_dataset,
+    )
 
 
 def extract_plan_lineage(plan: str, mapping: MappingConfig) -> list[ColumnLineage]:
     column_texts = _column_texts_from_tree(plan)
-    destination_dataset, namespace_map = _parse_datasets(column_texts, mapping)
+    (
+        destination_dataset,
+        namespace_map,
+        left_join_keys,
+        right_join_keys,
+        left_dataset,
+        right_dataset,
+    ) = _parse_datasets(column_texts, mapping)
 
     parsed_blocks: list[tuple[str, str]] = []
     for column_text in column_texts.values():
@@ -120,12 +183,32 @@ def extract_plan_lineage(plan: str, mapping: MappingConfig) -> list[ColumnLineag
 
         source_columns: list[ColumnRef] = []
         for source_column_name in parsed.columns:
-            source_dataset = namespace_map.get(source_column_name)
-            if source_dataset is None:
+            source_candidates = namespace_map.get(source_column_name)
+            source_dataset: DatasetRef
+            if source_candidates is None:
                 if source_column_name in derived_columns:
                     source_dataset = destination_dataset
                 else:
                     raise ValueError(f"unresolved source column: {source_column_name}")
+            elif len(source_candidates) == 1:
+                source_dataset = source_candidates[0]
+            elif (
+                source_column_name in left_join_keys
+                and source_column_name in right_join_keys
+                and left_dataset in source_candidates
+            ):
+                source_dataset = left_dataset
+            elif source_column_name in left_join_keys and left_dataset in source_candidates:
+                source_dataset = left_dataset
+            elif source_column_name in right_join_keys and right_dataset in source_candidates:
+                source_dataset = right_dataset
+            elif source_column_name in left_join_keys | right_join_keys:
+                source_dataset = source_candidates[0]
+            else:
+                candidate_tables = ", ".join(item.fqn for item in source_candidates)
+                raise ValueError(
+                    f"ambiguous source column: {source_column_name} candidates={candidate_tables}"
+                )
             source_columns.append(ColumnRef(dataset=source_dataset, column=source_column_name))
 
         lineage.append(

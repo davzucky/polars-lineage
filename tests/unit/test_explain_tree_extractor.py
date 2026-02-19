@@ -90,6 +90,122 @@ OVERLAP_JOIN_PLAN = """
 """
 
 
+AMBIGUOUS_JOIN_PLAN = """
+                           0                              1                   2                   3                   4
+   ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   │
+   │                ╭──────────────╮
+ 0 │                │ WITH_COLUMNS │
+   │                ╰──────┬┬──────╯
+   │                       ││
+   │                       │╰─────────────────────────────╮
+   │                       │                              │
+   │  ╭────────────────────┴─────────────────────╮        │
+   │  │ expression:                              │  ╭─────┴─────╮
+ 1 │  │ col("value")                            │  │ LEFT JOIN │
+   │  │   .alias("picked")                      │  ╰─────┬┬────╯
+   │  ╰──────────────────────────────────────────╯        ││
+   │                                                      ││
+   │                                                      │╰──────────────────┬───────────────────┬───────────────────╮
+   │                                                      │                   │                   │                   │
+   │                                                ╭─────┴─────╮  ╭──────────┴──────────╮  ╭─────┴─────╮  ╭──────────┴──────────╮
+   │                                                │ left on:  │  │ LEFT PLAN:          │  │ right on: │  │ RIGHT PLAN:         │
+ 2 │                                                │ col("id") │  │ DF ["id", "value"]  │  │ col("id") │  │ DF ["id", "value"]  │
+   │                                                ╰───────────╯  │ PROJECT */2 COLUMNS │  ╰───────────╯  │ PROJECT */2 COLUMNS │
+   │                                                               ╰─────────────────────╯                 ╰─────────────────────╯
+"""
+
+
+MULTIKEY_OVERLAP_JOIN_PLAN = """
+                           0                              1                   2                   3                   4
+   ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   │
+   │                ╭──────────────╮
+ 0 │                │ WITH_COLUMNS │
+   │                ╰──────┬┬──────╯
+   │                       ││
+   │                       │╰─────────────────────────────╮
+   │                       │                              │
+   │  ╭────────────────────┴─────────────────────╮        │
+   │  │ expression:                              │  ╭─────┴─────╮
+ 1 │  │ col("id")                               │  │ LEFT JOIN │
+   │  │   .alias("joined_id")                   │  ╰─────┬┬────╯
+   │  ╰──────────────────────────────────────────╯        ││
+   │                                                      ││
+   │                                                      │╰──────────────────┬───────────────────┬───────────────────╮
+   │                                                      │                   │                   │                   │
+   │                                                ╭─────┴─────╮  ╭──────────┴──────────╮  ╭─────┴─────╮  ╭──────────┴──────────╮
+   │                                                │ left on:  │  │ LEFT PLAN:          │  │ right on: │  │ RIGHT PLAN:         │
+ 2 │                                                │ [col("id"), col("dt")] │  │ DF ["id", "dt", "a"] │  │ [col("id"), col("dt")] │  │ DF ["id", "dt", "b"] │
+   │                                                ╰───────────╯  │ PROJECT */3 COLUMNS │  ╰───────────╯  │ PROJECT */3 COLUMNS │
+   │                                                               ╰─────────────────────╯                 ╰─────────────────────╯
+"""
+
+
+ASYMMETRIC_JOIN_KEY_PLAN = """
+                           0                              1                   2                   3                   4
+   ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   │
+   │                ╭──────────────╮
+ 0 │                │ WITH_COLUMNS │
+   │                ╰──────┬┬──────╯
+   │                       ││
+   │                       │╰─────────────────────────────╮
+   │                       │                              │
+   │  ╭────────────────────┴─────────────────────╮        │
+   │  │ expression:                              │  ╭─────┴─────╮
+ 1 │  │ col("id_r")                             │  │ LEFT JOIN │
+   │  │   .alias("chosen")                      │  ╰─────┬┬────╯
+   │  ╰──────────────────────────────────────────╯        ││
+   │                                                      ││
+   │                                                      │╰──────────────────┬───────────────────┬───────────────────╮
+   │                                                      │                   │                   │                   │
+   │                                                ╭─────┴─────╮  ╭──────────┴──────────╮  ╭─────┴─────╮  ╭──────────┴──────────╮
+   │                                                │ left on:  │  │ LEFT PLAN:          │  │ right on: │  │ RIGHT PLAN:         │
+ 2 │                                                │ col("id_l") │  │ DF ["id_l", "id_r", "a"] │  │ col("id_r") │  │ DF ["id_l", "id_r", "b"] │
+   │                                                ╰───────────╯  │ PROJECT */3 COLUMNS │  ╰───────────╯  │ PROJECT */3 COLUMNS │
+   │                                                               ╰─────────────────────╯                 ╰─────────────────────╯
+"""
+
+
+CHAINED_JOIN_PLAN = """
+                           0                              1                   2                   3                   4                   5
+   ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   │
+   │                ╭──────────────╮
+ 0 │                │ WITH_COLUMNS │
+   │                ╰──────┬┬──────╯
+   │                       ││
+   │                       │╰─────────────────────────────╮
+   │                       │                              │
+   │  ╭────────────────────┴─────────────────────╮        │
+   │  │ expression:                              │  ╭─────┴─────╮
+ 1 │  │ [(col("a")) + (col("b"))]               │  │ LEFT JOIN │
+   │  │   .alias("total")                        │  ╰─────┬┬────╯
+   │  ╰──────────────────────────────────────────╯        ││
+   │                                                      ││
+   │                                                      │╰───────────────────────╮
+   │                                                      │                        │
+   │                                                ╭─────┴─────╮           ╭──────┴───────╮
+ 2 │                                                │ LEFT JOIN │           │ LEFT PLAN:   │
+   │                                                ╰─────┬┬────╯           │ DF ["id", "a"] │
+   │                                                      ││                 ╰──────────────╯
+   │                                                      │╰──────────────────┬───────────────────┬───────────────────╮
+   │                                                      │                   │                   │                   │
+   │                                                ╭─────┴─────╮  ╭──────────┴──────────╮  ╭─────┴─────╮  ╭──────────┴──────────╮
+   │                                                │ left on:  │  │ LEFT PLAN:          │  │ right on: │  │ RIGHT PLAN:         │
+ 3 │                                                │ col("id") │  │ DF ["id", "a"]      │  │ col("id") │  │ DF ["id", "b"]      │
+   │                                                ╰───────────╯  │ PROJECT */2 COLUMNS │  ╰───────────╯  │ PROJECT */2 COLUMNS │
+   │                                                               ╰─────────────────────╯                 ╰─────────────────────╯
+"""
+
+
+COMPACT_DF_JOIN_PLAN = """
+0 │ │ WITH_COLUMNS │
+1 │ │ expression: col("b").alias("picked") LEFT JOIN left on: col("id") right on: col("id") LEFT PLAN: DF ["id", "a"] RIGHT PLAN: DF ["id", "b"]
+"""
+
+
 def test_extract_select_plan_lineage() -> None:
     mapping = MappingConfig(
         sources={"orders": "svc.db.raw.orders"},
@@ -159,3 +275,112 @@ def test_extract_join_prefers_left_for_overlapping_column_names() -> None:
     lineage = extract_plan_lineage(OVERLAP_JOIN_PLAN, mapping)
 
     assert lineage[0].from_columns[0].dataset.table == "left_table"
+
+
+def test_extract_join_uses_alias_names_not_mapping_order() -> None:
+    mapping = MappingConfig(
+        sources={"right": "svc.db.raw.right_table", "left": "svc.db.raw.left_table"},
+        destination_table="svc.db.curated.joined",
+    )
+
+    lineage = extract_plan_lineage(JOIN_PLAN, mapping)
+
+    source_datasets = {item.dataset.table for item in lineage[0].from_columns}
+    assert source_datasets == {"left_table", "right_table"}
+
+
+def test_extract_join_raises_for_ambiguous_non_join_overlap() -> None:
+    mapping = MappingConfig(
+        sources={"left": "svc.db.raw.left_table", "right": "svc.db.raw.right_table"},
+        destination_table="svc.db.curated.joined",
+    )
+
+    with_error = False
+    try:
+        extract_plan_lineage(AMBIGUOUS_JOIN_PLAN, mapping)
+    except ValueError as exc:
+        with_error = True
+        assert "ambiguous source column" in str(exc)
+
+    assert with_error
+
+
+def test_extract_join_handles_multikey_join_overlap() -> None:
+    mapping = MappingConfig(
+        sources={"left": "svc.db.raw.left_table", "right": "svc.db.raw.right_table"},
+        destination_table="svc.db.curated.joined",
+    )
+
+    lineage = extract_plan_lineage(MULTIKEY_OVERLAP_JOIN_PLAN, mapping)
+
+    assert lineage[0].from_columns[0].dataset.table == "left_table"
+
+
+def test_extract_join_handles_asymmetric_join_keys() -> None:
+    mapping = MappingConfig(
+        sources={"left": "svc.db.raw.left_table", "right": "svc.db.raw.right_table"},
+        destination_table="svc.db.curated.joined",
+    )
+
+    lineage = extract_plan_lineage(ASYMMETRIC_JOIN_KEY_PLAN, mapping)
+
+    assert lineage[0].from_columns[0].dataset.table == "right_table"
+
+
+def test_extract_join_requires_left_right_aliases() -> None:
+    mapping = MappingConfig(
+        sources={"source1": "svc.db.raw.left_table", "source2": "svc.db.raw.right_table"},
+        destination_table="svc.db.curated.joined",
+    )
+
+    with_error = False
+    try:
+        extract_plan_lineage(JOIN_PLAN, mapping)
+    except ValueError as exc:
+        with_error = True
+        assert "left/right" in str(exc)
+
+    assert with_error
+
+
+def test_extract_rejects_multi_join_plan() -> None:
+    mapping = MappingConfig(
+        sources={"left": "svc.db.raw.left_table", "right": "svc.db.raw.right_table"},
+        destination_table="svc.db.curated.joined",
+    )
+
+    with_error = False
+    try:
+        extract_plan_lineage(CHAINED_JOIN_PLAN, mapping)
+    except ValueError as exc:
+        with_error = True
+        assert "multiple joins" in str(exc)
+
+    assert with_error
+
+
+def test_extract_join_requires_two_explicit_aliases() -> None:
+    mapping = MappingConfig(
+        sources={"orders": "svc.db.raw.orders"},
+        destination_table="svc.db.curated.joined",
+    )
+
+    with_error = False
+    try:
+        extract_plan_lineage(JOIN_PLAN, mapping)
+    except ValueError as exc:
+        with_error = True
+        assert "left/right" in str(exc)
+
+    assert with_error
+
+
+def test_extract_join_parses_multiple_df_matches_in_same_block() -> None:
+    mapping = MappingConfig(
+        sources={"left": "svc.db.raw.left_table", "right": "svc.db.raw.right_table"},
+        destination_table="svc.db.curated.joined",
+    )
+
+    lineage = extract_plan_lineage(COMPACT_DF_JOIN_PLAN, mapping)
+
+    assert lineage[0].from_columns[0].dataset.table == "right_table"
