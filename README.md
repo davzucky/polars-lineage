@@ -64,6 +64,99 @@ The `mapping` argument can be either:
 - a `MappingConfig`
 - a `dict` with `sources` and `destination_table`
 
+### Metadata-on-LazyFrame Pattern
+
+After importing `polars_lineage`, `pl.LazyFrame` gets an `add_metadata(...)` helper.
+
+Supported forms:
+
+- explicit lineage mapping:
+  - `source="svc.db.raw.orders"` (single source), or
+  - `sources={"left": "...", "right": "..."}` (multi-source)
+  - optional `destination_table="svc.db.curated.result"`
+- metadata mode:
+  - `name="orders"`, `source_type="postgres"`, `source_url="postgres://..."`
+  - destination table is auto-derived unless provided
+
+Example with metadata attached directly to `LazyFrame` definitions:
+
+```python
+import polars as pl
+import polars_lineage  # registers LazyFrame.add_metadata
+
+df_order = (
+    pl.DataFrame({"a": [1], "b": [2]})
+    .lazy()
+    .add_metadata(
+        name="orders",
+        source_type="postgres",
+        source_url="postgres://myserver/svc.db.raw.orders",
+    )
+)
+
+df_account = (
+    pl.DataFrame({"a": [1], "b": [2]})
+    .lazy()
+    .add_metadata(
+        name="account",
+        source_type="rest",
+        source_url="https://account/list",
+    )
+)
+
+lineage = (
+    df_account.join(df_order, on="a", how="inner")
+    .select([(pl.col("a") + pl.col("b")).alias("sum")])
+    .extract_lineage()
+)
+
+print(lineage)
+```
+
+Equivalent single-source style with explicit `source`:
+
+```python
+import polars as pl
+import polars_lineage
+
+lineage = (
+    pl.DataFrame({"a": [1], "b": [2]})
+    .lazy()
+    .add_metadata(
+        source="svc.db.raw.orders",
+        destination_table="svc.db.curated.order_metrics",
+    )
+    .select([(pl.col("a") + pl.col("b")).alias("sum")])
+    .extract_lineage()
+)
+
+print(lineage)
+```
+
+Example with group-by aggregation lineage:
+
+```python
+import polars as pl
+from polars_lineage import extract_lazyframe_lineage
+
+lazyframe = (
+    pl.DataFrame({"customer_id": [1, 1, 2], "amount": [10, 15, 8]})
+    .lazy()
+    .group_by("customer_id")
+    .agg(pl.col("amount").sum().alias("total_amount"))
+)
+
+payloads = extract_lazyframe_lineage(
+    lazyframe,
+    {
+        "sources": {"payments": "svc.db.raw.payments"},
+        "destination_table": "svc.db.curated.customer_totals",
+    },
+)
+
+print(payloads)
+```
+
 ## CLI Usage
 
 ```bash
@@ -86,6 +179,12 @@ Notes:
 - CLI reads a pre-generated Polars explain plan from disk.
 - For join plans, `mapping.sources` must include `left` and `right` aliases.
 
+## Wrapper Notes
+
+- `LineageLazyFrame` preserves metadata through most chained `LazyFrame` operations.
+- Joining two wrapped frames merges source metadata automatically (`left`/`right`).
+- `extract_lineage()` runs the same extraction pipeline as `extract_lazyframe_lineage(...)`.
+
 ## Current Capabilities
 
 - Projection lineage (`select`, `with_columns`)
@@ -101,6 +200,7 @@ Notes:
 - Multiple joins in one parsed plan are rejected.
 - Join mappings must include `left` and `right` source aliases.
 - Ambiguous non-join overlapping columns are rejected with clear errors.
+- For static type checking, dynamically added `LazyFrame.add_metadata(...)` may require stubs for full IDE/mypy method discovery.
 
 ## Development
 
