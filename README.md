@@ -32,6 +32,33 @@ payloads = extract_lazyframe_lineage(
 print(payloads)
 ```
 
+Example with multiple input sources (join):
+
+```python
+import polars as pl
+from polars_lineage import extract_lazyframe_lineage
+
+left = pl.DataFrame({"id": [1, 2], "a": [10, 20]}).lazy()
+right = pl.DataFrame({"id": [1, 2], "b": [3, 4]}).lazy()
+
+lazyframe = left.join(right, on="id", how="left").with_columns(
+    (pl.col("a") + pl.col("b")).alias("total")
+)
+
+payloads = extract_lazyframe_lineage(
+    lazyframe,
+    {
+        "sources": {
+            "left": "svc.db.raw.left_table",
+            "right": "svc.db.raw.right_table",
+        },
+        "destination_table": "svc.db.curated.joined_metrics",
+    },
+)
+
+print(payloads)
+```
+
 The `mapping` argument can be either:
 
 - a `MappingConfig`
@@ -57,6 +84,7 @@ Notes:
 
 - `plan_path` can be relative to the mapping file location.
 - CLI reads a pre-generated Polars explain plan from disk.
+- For join plans, `mapping.sources` must include `left` and `right` aliases.
 
 ## Current Capabilities
 
