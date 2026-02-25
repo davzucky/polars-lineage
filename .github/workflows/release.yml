@@ -3,10 +3,6 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Release version (for example: 0.1.1)"
-        required: true
-        type: string
       prerelease:
         description: "Mark GitHub Release as prerelease"
         required: false
@@ -18,13 +14,14 @@ permissions:
   id-token: write
 
 concurrency:
-  group: release-${{ inputs.version }}
+  group: release
   cancel-in-progress: false
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     outputs:
+      release_version: ${{ steps.version.outputs.release_version }}
       tag: ${{ steps.version.outputs.tag }}
       next_version: ${{ steps.version.outputs.next_version }}
     steps:
@@ -33,27 +30,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate input version and derive next version
+      - name: Read release version from pyproject and derive next version
         id: version
-        shell: bash
         run: |
-          VERSION="${{ inputs.version }}"
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Version must match MAJOR.MINOR.PATCH"
-            exit 1
-          fi
-
-          RELEASE_VERSION="${VERSION}" python - <<'PY'
+          python - <<'PY'
           import os
+          import re
           import tomllib
           from pathlib import Path
 
-          release_version = os.environ["RELEASE_VERSION"]
           data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-          current_version = data["project"]["version"]
-          if current_version != release_version:
+          release_version = data["project"]["version"]
+          if not re.fullmatch(r"\d+\.\d+\.\d+", release_version):
               raise SystemExit(
-                  f"Input version {release_version} does not match pyproject.toml version {current_version}"
+                  f"pyproject.toml version {release_version!r} must match MAJOR.MINOR.PATCH"
               )
 
           major, minor, patch = map(int, release_version.split("."))
@@ -61,6 +51,7 @@ jobs:
 
           github_output = Path(os.environ["GITHUB_OUTPUT"])
           with github_output.open("a", encoding="utf-8") as fh:
+              fh.write(f"release_version={release_version}\\n")
               fh.write(f"tag=v{release_version}\\n")
               fh.write(f"next_version={next_version}\\n")
           PY
