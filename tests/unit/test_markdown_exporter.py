@@ -58,3 +58,27 @@ def test_markdown_exporter_escapes_pipe_characters() -> None:
     markdown = export_lineage_markdown(document)
 
     assert "when(a\\|b)" in markdown
+
+
+def test_markdown_exporter_sanitizes_newlines_in_cells() -> None:
+    document = LineageDocument(
+        destination_table="svc.db.public.metrics",
+        edges=[
+            LineageEdge(
+                source_table="svc.db.public.orders",
+                destination_table="svc.db.public.metrics",
+                columns=[
+                    LineageColumn(
+                        to_column="flag",
+                        from_columns=["a"],
+                        function="line1\nline2\r",
+                        confidence="inferred",
+                    )
+                ],
+            )
+        ],
+    )
+
+    markdown = export_lineage_markdown(document)
+
+    assert "line1 line2" in markdown

@@ -4,7 +4,7 @@ from polars_lineage.exporter.models import LineageDocument
 
 
 def _escape_cell(value: str) -> str:
-    return value.replace("|", "\\|")
+    return value.replace("\r", "").replace("\n", " ").replace("|", "\\|")
 
 
 def export_lineage_markdown(document: LineageDocument) -> str:

@@ -10,6 +10,15 @@ from polars_lineage.ir import ColumnLineage
 def export_lineage_document(
     lineage: list[ColumnLineage], destination_table: str
 ) -> LineageDocument:
+    """Build a typed lineage document from IR entries.
+
+    Contract:
+    - ``destination_table`` must match ``entry.to_column.dataset.fqn`` for every
+      entry in ``lineage``.
+    - ``LineageDocument.destination_table`` and each
+      ``LineageEdge.destination_table`` therefore refer to the same destination
+      table FQN.
+    """
     grouped: dict[
         tuple[str, str],
         dict[tuple[str, str, Literal["exact", "inferred", "unknown"]], set[str]],
@@ -17,6 +26,8 @@ def export_lineage_document(
 
     for entry in lineage:
         destination_dataset_fqn = entry.to_column.dataset.fqn
+        if destination_dataset_fqn != destination_table:
+            raise ValueError("destination_table must match every entry.to_column.dataset.fqn")
         columns_by_source: dict[str, set[str]] = defaultdict(set)
         for source in entry.from_columns:
             columns_by_source[source.dataset.fqn].add(source.column)

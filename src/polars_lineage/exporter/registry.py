@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, assert_never
 
 from polars_lineage.config import MappingConfig
 from polars_lineage.exporter.json import export_lineage_document
@@ -23,4 +23,6 @@ def export_lineage(
     if output_format == "markdown":
         document = export_lineage_document(lineage, destination_table=mapping.destination_table)
         return export_lineage_markdown(document)
+    if TYPE_CHECKING:
+        assert_never(output_format)
     raise ValueError(f"unsupported output format: {output_format}")

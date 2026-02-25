@@ -38,19 +38,22 @@ For format-aware output, use `extract_lazyframe_lineage_formatted(...)`:
 
 ```python
 import polars as pl
-from polars_lineage import extract_lazyframe_lineage_formatted
+from polars_lineage import (
+    LineageDocument,
+    extract_lazyframe_lineage_document,
+    extract_lazyframe_lineage_formatted,
+)
 
 lazyframe = pl.DataFrame({"a": [1], "b": [2]}).lazy().select(
     [(pl.col("a") + pl.col("b")).alias("sum")]
 )
 
-json_document = extract_lazyframe_lineage_formatted(
+json_document: LineageDocument = extract_lazyframe_lineage_document(
     lazyframe,
     {
         "sources": {"orders": "svc.db.raw.orders"},
         "destination_table": "svc.db.curated.metrics",
     },
-    output_format="json",
 )
 
 markdown_report = extract_lazyframe_lineage_formatted(
