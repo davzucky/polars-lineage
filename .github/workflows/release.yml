@@ -1,0 +1,234 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (for example: 0.1.1)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark GitHub Release as prerelease"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      next_version: ${{ steps.version.outputs.next_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate input version and derive next version
+        id: version
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must match MAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
+          RELEASE_VERSION="${VERSION}" python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          release_version = os.environ["RELEASE_VERSION"]
+          data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          current_version = data["project"]["version"]
+          if current_version != release_version:
+              raise SystemExit(
+                  f"Input version {release_version} does not match pyproject.toml version {current_version}"
+              )
+
+          major, minor, patch = map(int, release_version.split("."))
+          next_version = f"{major}.{minor}.{patch + 1}"
+
+          github_output = Path(os.environ["GITHUB_OUTPUT"])
+          with github_output.open("a", encoding="utf-8") as fh:
+              fh.write(f"tag=v{release_version}\\n")
+              fh.write(f"next_version={next_version}\\n")
+          PY
+
+      - name: Ensure release tag does not exist
+        shell: bash
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git fetch --tags --force
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "Tag ${TAG} already exists locally"
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null; then
+            echo "Tag ${TAG} already exists on origin"
+            exit 1
+          fi
+
+  create_tag:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push release tag
+        shell: bash
+        run: |
+          TAG="${{ needs.validate.outputs.tag }}"
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "${TAG}"
+
+  build:
+    runs-on: ubuntu-latest
+    needs:
+      - validate
+      - create_tag
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync dependencies
+        run: uv sync --dev --frozen
+
+      - name: Verify lockfile
+        run: uv lock --check
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run mypy
+
+      - name: Test
+        run: uv run pytest
+
+      - name: Build
+        run: uv build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+  github_release:
+    runs-on: ubuntu-latest
+    needs:
+      - validate
+      - build
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ inputs.prerelease }}
+          files: dist/*
+          fail_on_unmatched_files: true
+
+  publish_pypi:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+
+  bump_version:
+    runs-on: ubuntu-latest
+    needs:
+      - validate
+      - github_release
+      - publish_pypi
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Bump pyproject version
+        shell: bash
+        run: |
+          NEXT_VERSION="${{ needs.validate.outputs.next_version }}"
+          NEXT_VERSION="${NEXT_VERSION}" python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("pyproject.toml")
+          text = path.read_text(encoding="utf-8")
+          next_version = os.environ["NEXT_VERSION"]
+          updated, count = re.subn(
+              r'(?m)^version = "[^"]+"$',
+              f'version = "{next_version}"',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Could not update project version in pyproject.toml")
+          path.write_text(updated, encoding="utf-8")
+          PY
+
+      - name: Commit and push version bump
+        shell: bash
+        run: |
+          NEXT_VERSION="${{ needs.validate.outputs.next_version }}"
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add pyproject.toml
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "chore: bump version to ${NEXT_VERSION}"
+          git push origin "HEAD:${DEFAULT_BRANCH}"
