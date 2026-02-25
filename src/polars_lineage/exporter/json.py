@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Literal
 
 from polars_lineage.exporter.models import LineageColumn, LineageDocument, LineageEdge
 from polars_lineage.ir import ColumnLineage
@@ -9,7 +10,10 @@ from polars_lineage.ir import ColumnLineage
 def export_lineage_document(
     lineage: list[ColumnLineage], destination_table: str
 ) -> LineageDocument:
-    grouped: dict[tuple[str, str], dict[tuple[str, str, str], set[str]]] = defaultdict(dict)
+    grouped: dict[
+        tuple[str, str],
+        dict[tuple[str, str, Literal["exact", "inferred", "unknown"]], set[str]],
+    ] = defaultdict(dict)
 
     for entry in lineage:
         destination_dataset_fqn = entry.to_column.dataset.fqn
