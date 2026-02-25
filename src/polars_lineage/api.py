@@ -5,7 +5,12 @@ from typing import Any
 import polars as pl
 
 from polars_lineage.config import MappingConfig
-from polars_lineage.pipeline import extract_lineage_payloads_from_lazyframe
+from polars_lineage.exporter import OutputFormat, RenderedLineage
+from polars_lineage.exporter.models import LineageDocument
+from polars_lineage.pipeline import (
+    extract_lineage_output_from_lazyframe,
+    extract_lineage_payloads_from_lazyframe,
+)
 
 LineagePayload = dict[str, Any]
 
@@ -34,3 +39,25 @@ def extract_lazyframe_lineage(
     """
     normalized_mapping = _normalize_mapping(mapping)
     return extract_lineage_payloads_from_lazyframe(lazyframe, normalized_mapping)
+
+
+def extract_lazyframe_lineage_formatted(
+    lazyframe: pl.LazyFrame,
+    mapping: MappingConfig | dict[str, Any],
+    output_format: OutputFormat,
+) -> RenderedLineage:
+    normalized_mapping = _normalize_mapping(mapping)
+    return extract_lineage_output_from_lazyframe(
+        lazyframe,
+        normalized_mapping,
+        output_format=output_format,
+    )
+
+
+def extract_lazyframe_lineage_document(
+    lazyframe: pl.LazyFrame, mapping: MappingConfig | dict[str, Any]
+) -> LineageDocument:
+    output = extract_lazyframe_lineage_formatted(lazyframe, mapping, output_format="json")
+    if not isinstance(output, LineageDocument):  # pragma: no cover - defensive typing guard
+        raise TypeError("json export must return a typed LineageDocument")
+    return output
