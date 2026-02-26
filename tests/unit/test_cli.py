@@ -129,3 +129,85 @@ destination_table: svc.db.curated.metrics
 
     assert result.exit_code == 1
     assert "plan_path" in (result.stdout + result.stderr)
+
+
+def test_extract_command_writes_custom_json_format(tmp_path: Path) -> None:
+    mapping_path = tmp_path / "mapping.yml"
+    plan_path = tmp_path / "plan.txt"
+    out_path = tmp_path / "lineage.json"
+
+    plan_path.write_text(
+        """
+0 │ │ SELECT │
+1 │ │ expression: col("a").alias("x") │ │ FROM: DF ["a"]
+        """.strip(),
+        encoding="utf-8",
+    )
+    mapping_path.write_text(
+        """
+sources:
+  orders: svc.db.raw.orders
+destination_table: svc.db.curated.metrics
+plan_path: plan.txt
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "extract",
+            "--mapping",
+            str(mapping_path),
+            "--out",
+            str(out_path),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["destination_table"] == "svc.db.curated.metrics"
+    assert payload["edges"][0]["columns"][0]["to_column"] == "x"
+
+
+def test_extract_command_writes_markdown_format(tmp_path: Path) -> None:
+    mapping_path = tmp_path / "mapping.yml"
+    plan_path = tmp_path / "plan.txt"
+    out_path = tmp_path / "lineage.md"
+
+    plan_path.write_text(
+        """
+0 │ │ SELECT │
+1 │ │ expression: col("a").alias("x") │ │ FROM: DF ["a"]
+        """.strip(),
+        encoding="utf-8",
+    )
+    mapping_path.write_text(
+        """
+sources:
+  orders: svc.db.raw.orders
+destination_table: svc.db.curated.metrics
+plan_path: plan.txt
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "extract",
+            "--mapping",
+            str(mapping_path),
+            "--out",
+            str(out_path),
+            "--format",
+            "markdown",
+        ],
+    )
+
+    assert result.exit_code == 0
+    markdown = out_path.read_text(encoding="utf-8")
+    assert "# Lineage" in markdown
+    assert "svc.db.curated.metrics" in markdown

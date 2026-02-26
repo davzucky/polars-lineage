@@ -1,6 +1,6 @@
 # polars-lineage
 
-Extract column-level lineage from Polars `LazyFrame` transformations and emit deterministic OpenMetadata-shaped JSON payloads.
+Extract column-level lineage from Polars `LazyFrame` transformations and emit deterministic lineage artifacts in multiple formats.
 
 ## Install and Setup
 
@@ -30,6 +30,62 @@ payloads = extract_lazyframe_lineage(
 )
 
 print(payloads)
+```
+
+`extract_lazyframe_lineage(...)` stays backward-compatible and returns OpenMetadata payloads by default.
+
+For format-aware output, use `extract_lazyframe_lineage_formatted(...)`:
+
+```python
+import polars as pl
+from polars_lineage import (
+    LineageDocument,
+    extract_lazyframe_lineage_document,
+    extract_lazyframe_lineage_formatted,
+)
+
+lazyframe = pl.DataFrame({"a": [1], "b": [2]}).lazy().select(
+    [(pl.col("a") + pl.col("b")).alias("sum")]
+)
+
+json_document: LineageDocument = extract_lazyframe_lineage_document(
+    lazyframe,
+    {
+        "sources": {"orders": "svc.db.raw.orders"},
+        "destination_table": "svc.db.curated.metrics",
+    },
+)
+
+markdown_report = extract_lazyframe_lineage_formatted(
+    lazyframe,
+    {
+        "sources": {"orders": "svc.db.raw.orders"},
+        "destination_table": "svc.db.curated.metrics",
+    },
+    output_format="markdown",
+)
+
+print(json_document.model_dump())
+print(markdown_report)
+```
+
+If you want a strongly typed Pydantic model for consumer code, use:
+
+```python
+import polars as pl
+from polars_lineage import LineageDocument, extract_lazyframe_lineage_document
+
+lazyframe = pl.DataFrame({"a": [1]}).lazy().select([pl.col("a").alias("x")])
+
+document: LineageDocument = extract_lazyframe_lineage_document(
+    lazyframe,
+    {
+        "sources": {"orders": "svc.db.raw.orders"},
+        "destination_table": "svc.db.curated.metrics",
+    },
+)
+
+print(document.model_dump())
 ```
 
 Example with multiple input sources (join):
@@ -163,6 +219,19 @@ print(payloads)
 uv run polars-lineage extract --mapping mapping.yml --out lineage.json
 ```
 
+Choose an output format with `--format`:
+
+```bash
+# Existing default behavior
+uv run polars-lineage extract --mapping mapping.yml --out lineage-openmetadata.json --format openmetadata
+
+# Strongly typed custom JSON document
+uv run polars-lineage extract --mapping mapping.yml --out lineage.json --format json
+
+# Human-readable report
+uv run polars-lineage extract --mapping mapping.yml --out lineage.md --format markdown
+```
+
 `mapping.yml` example:
 
 ```yaml
@@ -194,6 +263,18 @@ Notes:
 - Join-aware attribution with explicit `left`/`right` mapping aliases
 - Group-by aggregation expression and key coverage
 - Deterministic OpenMetadata payload export
+- Deterministic custom JSON export via typed `LineageDocument` model
+- Deterministic Markdown lineage rendering
+
+## Output Formats
+
+- `openmetadata`: existing OpenMetadata AddLineageRequest-style payload list
+- `json`: custom typed JSON document
+  - top-level: `destination_table`, `edges[]`
+  - edge: `source_table`, `destination_table`, `columns[]`
+  - column: `to_column`, `from_columns`, `function`, `confidence`
+- `markdown`: human-readable lineage table report
+- `openlineage`: planned follow-up
 
 ## Current Constraints
 
