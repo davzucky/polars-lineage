@@ -31,6 +31,10 @@ def test_markdown_exporter_renders_table_sections() -> None:
 
     assert "# Lineage" in markdown
     assert "Destination table: `svc.db.public.metrics`" in markdown
+    assert "## Data Flow" in markdown
+    assert "```mermaid" in markdown
+    assert 'source_0["Source\\nsvc.db.public.orders"]' in markdown
+    assert "source_0 --> destination" in markdown
     assert "## `svc.db.public.orders` -> `svc.db.public.metrics`" in markdown
     assert "| to_column | from_columns | function | confidence |" in markdown
     assert '| sum | a, b | [(col("a")) + (col("b"))] | exact |' in markdown
