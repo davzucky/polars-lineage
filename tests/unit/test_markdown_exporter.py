@@ -198,3 +198,35 @@ def test_markdown_exporter_renders_destination_with_empty_source_columns() -> No
     markdown = export_lineage_markdown(document)
 
     assert "| constant_value |  |" in markdown
+
+
+def test_markdown_exporter_renders_self_join_roles_in_mermaid_flow() -> None:
+    document = LineageDocument(
+        destination_table="svc.db.public.joined",
+        edges=[
+            LineageEdge(
+                source_table="svc.db.public.events",
+                destination_table="svc.db.public.joined",
+                columns=[
+                    LineageColumn(
+                        to_column="value",
+                        from_columns=["left_value", "right_value"],
+                        function="coalesce",
+                        confidence="inferred",
+                    )
+                ],
+            )
+        ],
+    )
+    mapping = MappingConfig(
+        sources={"left": "svc.db.public.events", "right": "svc.db.public.events"},
+        destination_table="svc.db.public.joined",
+    )
+
+    markdown = export_lineage_markdown(document, mapping)
+
+    assert 'join_node{"JOIN"}' in markdown
+    assert "source_0 -->|left| join_node" in markdown
+    assert "source_1 -->|right| join_node" in markdown
+    assert 'source_0["Source\\nsvc.db.public.events"]' in markdown
+    assert 'source_1["Source\\nsvc.db.public.events"]' in markdown

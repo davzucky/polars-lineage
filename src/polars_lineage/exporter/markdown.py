@@ -17,33 +17,42 @@ def _source_node_id(index: int) -> str:
 
 def _render_mermaid_flow(document: LineageDocument, mapping: MappingConfig | None) -> list[str]:
     sorted_sources = sorted({edge.source_table for edge in document.edges})
+    source_set = set(sorted_sources)
     lines: list[str] = [
         "```mermaid",
         "flowchart LR",
         '  destination["Destination\\n' + document.destination_table + '"]',
     ]
-    source_roles = {fqn: alias for alias, fqn in mapping.sources.items()} if mapping else {}
-    left_source = next(
-        (source for source in sorted_sources if source_roles.get(source) == "left"), None
-    )
-    right_source = next(
-        (source for source in sorted_sources if source_roles.get(source) == "right"), None
-    )
-    uses_join_node = left_source is not None and right_source is not None
+    join_sources: list[tuple[str, str]] = []
+    if mapping is not None:
+        left_source = mapping.sources.get("left")
+        right_source = mapping.sources.get("right")
+        if left_source in source_set and right_source in source_set:
+            join_sources = [("left", left_source), ("right", right_source)]
+
+    uses_join_node = bool(join_sources)
 
     if uses_join_node:
         lines.append('  join_node{"JOIN"}')
 
-    for index, source_table in enumerate(sorted_sources):
-        source_node = _source_node_id(index)
-        lines.append(f'  {source_node}["Source\\n{source_table}"]')
-        if uses_join_node:
-            role = source_roles.get(source_table)
-            if role in {"left", "right"}:
-                lines.append(f"  {source_node} -->|{role}| join_node")
-            else:
-                lines.append(f"  {source_node} --> join_node")
-        else:
+    if uses_join_node:
+        node_index = 0
+        for role, source_table in join_sources:
+            source_node = _source_node_id(node_index)
+            node_index += 1
+            lines.append(f'  {source_node}["Source\\n{source_table}"]')
+            lines.append(f"  {source_node} -->|{role}| join_node")
+
+        join_tables = {source_table for _, source_table in join_sources}
+        for source_table in sorted(source_set - join_tables):
+            source_node = _source_node_id(node_index)
+            node_index += 1
+            lines.append(f'  {source_node}["Source\\n{source_table}"]')
+            lines.append(f"  {source_node} --> join_node")
+    else:
+        for index, source_table in enumerate(sorted_sources):
+            source_node = _source_node_id(index)
+            lines.append(f'  {source_node}["Source\\n{source_table}"]')
             lines.append(f"  {source_node} --> destination")
 
     if uses_join_node:
