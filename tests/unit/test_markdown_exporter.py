@@ -39,9 +39,7 @@ def test_markdown_exporter_renders_table_sections() -> None:
     assert "## Destination Column Lineage" in markdown
     assert "| destination_column | source_columns |" in markdown
     assert "| sum | svc.db.public.orders.a, svc.db.public.orders.b |" in markdown
-    assert "## `svc.db.public.orders` -> `svc.db.public.metrics`" in markdown
-    assert "| to_column | from_columns | function | confidence |" in markdown
-    assert '| sum | a, b | [(col("a")) + (col("b"))] | exact |' in markdown
+    assert "to_column | from_columns | function | confidence" not in markdown
 
 
 def test_markdown_exporter_escapes_pipe_characters() -> None:
@@ -54,8 +52,8 @@ def test_markdown_exporter_escapes_pipe_characters() -> None:
                 columns=[
                     LineageColumn(
                         to_column="flag",
-                        from_columns=["a"],
-                        function="when(a|b)",
+                        from_columns=["a|b"],
+                        function='col("a|b")',
                         confidence="inferred",
                     )
                 ],
@@ -65,7 +63,7 @@ def test_markdown_exporter_escapes_pipe_characters() -> None:
 
     markdown = export_lineage_markdown(document)
 
-    assert "when(a\\|b)" in markdown
+    assert "svc.db.public.orders.a\\|b" in markdown
 
 
 def test_markdown_exporter_sanitizes_newlines_in_cells() -> None:
@@ -77,9 +75,9 @@ def test_markdown_exporter_sanitizes_newlines_in_cells() -> None:
                 destination_table="svc.db.public.metrics",
                 columns=[
                     LineageColumn(
-                        to_column="flag",
+                        to_column="flag\nnew",
                         from_columns=["a"],
-                        function="line1\nline2\r",
+                        function='col("a")',
                         confidence="inferred",
                     )
                 ],
@@ -89,7 +87,7 @@ def test_markdown_exporter_sanitizes_newlines_in_cells() -> None:
 
     markdown = export_lineage_markdown(document)
 
-    assert "line1 line2" in markdown
+    assert "flag new" in markdown
 
 
 def test_markdown_exporter_renders_join_information_in_mermaid_flow() -> None:
