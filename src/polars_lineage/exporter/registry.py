@@ -22,7 +22,7 @@ def export_lineage(
         return export_lineage_document(lineage, destination_table=mapping.destination_table)
     if output_format == "markdown":
         document = export_lineage_document(lineage, destination_table=mapping.destination_table)
-        return export_lineage_markdown(document)
+        return export_lineage_markdown(document, mapping)
     if TYPE_CHECKING:
         assert_never(output_format)
     raise ValueError(f"unsupported output format: {output_format}")

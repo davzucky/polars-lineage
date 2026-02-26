@@ -1,3 +1,4 @@
+from polars_lineage.config import MappingConfig
 from polars_lineage.exporter.markdown import export_lineage_markdown
 from polars_lineage.exporter.models import LineageColumn, LineageDocument, LineageEdge
 
@@ -89,3 +90,46 @@ def test_markdown_exporter_sanitizes_newlines_in_cells() -> None:
     markdown = export_lineage_markdown(document)
 
     assert "line1 line2" in markdown
+
+
+def test_markdown_exporter_renders_join_information_in_mermaid_flow() -> None:
+    document = LineageDocument(
+        destination_table="svc.db.public.joined",
+        edges=[
+            LineageEdge(
+                source_table="svc.db.public.left",
+                destination_table="svc.db.public.joined",
+                columns=[
+                    LineageColumn(
+                        to_column="total",
+                        from_columns=["a"],
+                        function='col("a")',
+                        confidence="exact",
+                    )
+                ],
+            ),
+            LineageEdge(
+                source_table="svc.db.public.right",
+                destination_table="svc.db.public.joined",
+                columns=[
+                    LineageColumn(
+                        to_column="total",
+                        from_columns=["b"],
+                        function='col("b")',
+                        confidence="exact",
+                    )
+                ],
+            ),
+        ],
+    )
+    mapping = MappingConfig(
+        sources={"left": "svc.db.public.left", "right": "svc.db.public.right"},
+        destination_table="svc.db.public.joined",
+    )
+
+    markdown = export_lineage_markdown(document, mapping)
+
+    assert 'join_node{"JOIN"}' in markdown
+    assert "-->|left| join_node" in markdown
+    assert "-->|right| join_node" in markdown
+    assert "join_node --> destination" in markdown
