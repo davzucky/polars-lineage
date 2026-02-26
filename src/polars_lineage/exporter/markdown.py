@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Any
 
 from polars_lineage.config import MappingConfig
 from polars_lineage.exporter.models import LineageDocument
@@ -57,6 +58,7 @@ def _render_destination_column_table(document: LineageDocument) -> list[str]:
 
     for edge in document.edges:
         for column in edge.columns:
+            _ = from_columns_by_destination[column.to_column]
             for source_column in column.from_columns:
                 from_columns_by_destination[column.to_column].add(
                     f"{edge.source_table}.{source_column}"
@@ -76,10 +78,19 @@ def _render_destination_column_table(document: LineageDocument) -> list[str]:
     return lines
 
 
-def export_lineage_markdown(document: LineageDocument, mapping: MappingConfig | None = None) -> str:
+def _normalize_mapping(mapping: MappingConfig | dict[str, Any] | None) -> MappingConfig | None:
+    if mapping is None or isinstance(mapping, MappingConfig):
+        return mapping
+    return MappingConfig.model_validate(mapping)
+
+
+def export_lineage_markdown(
+    document: LineageDocument, mapping: MappingConfig | dict[str, Any] | None = None
+) -> str:
+    normalized_mapping = _normalize_mapping(mapping)
     lines: list[str] = ["# Lineage", "", f"Destination table: `{document.destination_table}`"]
     lines.extend(["", "## Data Flow", ""])
-    lines.extend(_render_mermaid_flow(document, mapping))
+    lines.extend(_render_mermaid_flow(document, normalized_mapping))
     lines.extend(["", "## Destination Column Lineage", ""])
     lines.extend(_render_destination_column_table(document))
 

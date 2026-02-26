@@ -131,3 +131,70 @@ def test_markdown_exporter_renders_join_information_in_mermaid_flow() -> None:
     assert "-->|left| join_node" in markdown
     assert "-->|right| join_node" in markdown
     assert "join_node --> destination" in markdown
+
+
+def test_markdown_exporter_accepts_mapping_dict_for_join_mermaid_flow() -> None:
+    document = LineageDocument(
+        destination_table="svc.db.public.joined",
+        edges=[
+            LineageEdge(
+                source_table="svc.db.public.left",
+                destination_table="svc.db.public.joined",
+                columns=[
+                    LineageColumn(
+                        to_column="total",
+                        from_columns=["a"],
+                        function='col("a")',
+                        confidence="exact",
+                    )
+                ],
+            ),
+            LineageEdge(
+                source_table="svc.db.public.right",
+                destination_table="svc.db.public.joined",
+                columns=[
+                    LineageColumn(
+                        to_column="total",
+                        from_columns=["b"],
+                        function='col("b")',
+                        confidence="exact",
+                    )
+                ],
+            ),
+        ],
+    )
+    mapping = {
+        "sources": {"left": "svc.db.public.left", "right": "svc.db.public.right"},
+        "destination_table": "svc.db.public.joined",
+    }
+
+    markdown = export_lineage_markdown(document, mapping)
+
+    assert 'join_node{"JOIN"}' in markdown
+    assert "-->|left| join_node" in markdown
+    assert "-->|right| join_node" in markdown
+    assert "join_node --> destination" in markdown
+
+
+def test_markdown_exporter_renders_destination_with_empty_source_columns() -> None:
+    document = LineageDocument(
+        destination_table="svc.db.public.metrics",
+        edges=[
+            LineageEdge(
+                source_table="svc.db.public.orders",
+                destination_table="svc.db.public.metrics",
+                columns=[
+                    LineageColumn(
+                        to_column="constant_value",
+                        from_columns=[],
+                        function="lit(1)",
+                        confidence="unknown",
+                    )
+                ],
+            )
+        ],
+    )
+
+    markdown = export_lineage_markdown(document)
+
+    assert "| constant_value |  |" in markdown
