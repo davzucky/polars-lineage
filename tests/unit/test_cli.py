@@ -1,22 +1,25 @@
 import json
+import sys
+from builtins import __import__ as builtin_import
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
-from polars_lineage.cli import app
+from polars_lineage import cli
 
 runner = CliRunner()
 
 
 def test_cli_help_resolves() -> None:
-    result = runner.invoke(app, ["--help"])
+    result = runner.invoke(cli.build_app(), ["--help"])
 
     assert result.exit_code == 0
     assert "Usage:" in result.stdout
 
 
 def test_extract_reports_not_implemented() -> None:
-    result = runner.invoke(app, ["extract"])
+    result = runner.invoke(cli.build_app(), ["extract"])
 
     assert result.exit_code != 0
 
@@ -56,7 +59,7 @@ plan_path: PLAN_PATH
     )
 
     result = runner.invoke(
-        app,
+        cli.build_app(),
         [
             "extract",
             "--mapping",
@@ -96,7 +99,7 @@ plan_path: plan.txt
     )
 
     result = runner.invoke(
-        app,
+        cli.build_app(),
         [
             "extract",
             "--mapping",
@@ -123,7 +126,7 @@ destination_table: svc.db.curated.metrics
     )
 
     result = runner.invoke(
-        app,
+        cli.build_app(),
         ["extract", "--mapping", str(mapping_path), "--out", str(out_path)],
     )
 
@@ -154,7 +157,7 @@ plan_path: plan.txt
     )
 
     result = runner.invoke(
-        app,
+        cli.build_app(),
         [
             "extract",
             "--mapping",
@@ -195,7 +198,7 @@ plan_path: plan.txt
     )
 
     result = runner.invoke(
-        app,
+        cli.build_app(),
         [
             "extract",
             "--mapping",
@@ -211,3 +214,24 @@ plan_path: plan.txt
     markdown = out_path.read_text(encoding="utf-8")
     assert "# Lineage" in markdown
     assert "svc.db.curated.metrics" in markdown
+
+
+def test_main_exits_with_install_hint_when_cli_dependencies_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _mocked_import(
+        name: str,
+        globals: dict[str, object] | None = None,
+        locals: dict[str, object] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> object:
+        if name == "typer":
+            raise ModuleNotFoundError("No module named 'typer'")
+        return builtin_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.delitem(sys.modules, "typer", raising=False)
+    monkeypatch.setattr("builtins.__import__", _mocked_import)
+
+    with pytest.raises(SystemExit, match=r"polars-lineage\[cli\]"):
+        cli.main()

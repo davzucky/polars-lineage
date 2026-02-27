@@ -4,6 +4,20 @@ Extract column-level lineage from Polars `LazyFrame` transformations and emit de
 
 ## Install and Setup
 
+Install API-only dependencies:
+
+```bash
+pip install polars-lineage
+```
+
+Install with CLI support:
+
+```bash
+pip install "polars-lineage[cli]"
+```
+
+For local development:
+
 ```bash
 uv sync --dev
 ```
@@ -215,21 +229,27 @@ print(payloads)
 
 ## CLI Usage
 
+Install the optional CLI extra first:
+
 ```bash
-uv run polars-lineage extract --mapping mapping.yml --out lineage.json
+pip install "polars-lineage[cli]"
+```
+
+```bash
+polars-lineage extract --mapping mapping.yml --out lineage.json
 ```
 
 Choose an output format with `--format`:
 
 ```bash
 # Existing default behavior
-uv run polars-lineage extract --mapping mapping.yml --out lineage-openmetadata.json --format openmetadata
+polars-lineage extract --mapping mapping.yml --out lineage-openmetadata.json --format openmetadata
 
 # Strongly typed custom JSON document
-uv run polars-lineage extract --mapping mapping.yml --out lineage.json --format json
+polars-lineage extract --mapping mapping.yml --out lineage.json --format json
 
 # Human-readable report
-uv run polars-lineage extract --mapping mapping.yml --out lineage.md --format markdown
+polars-lineage extract --mapping mapping.yml --out lineage.md --format markdown
 ```
 
 `mapping.yml` example:
