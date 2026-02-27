@@ -1,22 +1,23 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
-from polars_lineage.cli import app
+from polars_lineage import cli
 
 runner = CliRunner()
 
 
 def test_cli_help_resolves() -> None:
-    result = runner.invoke(app, ["--help"])
+    result = runner.invoke(cli.build_app(), ["--help"])
 
     assert result.exit_code == 0
     assert "Usage:" in result.stdout
 
 
 def test_extract_reports_not_implemented() -> None:
-    result = runner.invoke(app, ["extract"])
+    result = runner.invoke(cli.build_app(), ["extract"])
 
     assert result.exit_code != 0
 
@@ -56,7 +57,7 @@ plan_path: PLAN_PATH
     )
 
     result = runner.invoke(
-        app,
+        cli.build_app(),
         [
             "extract",
             "--mapping",
@@ -96,7 +97,7 @@ plan_path: plan.txt
     )
 
     result = runner.invoke(
-        app,
+        cli.build_app(),
         [
             "extract",
             "--mapping",
@@ -123,7 +124,7 @@ destination_table: svc.db.curated.metrics
     )
 
     result = runner.invoke(
-        app,
+        cli.build_app(),
         ["extract", "--mapping", str(mapping_path), "--out", str(out_path)],
     )
 
@@ -154,7 +155,7 @@ plan_path: plan.txt
     )
 
     result = runner.invoke(
-        app,
+        cli.build_app(),
         [
             "extract",
             "--mapping",
@@ -195,7 +196,7 @@ plan_path: plan.txt
     )
 
     result = runner.invoke(
-        app,
+        cli.build_app(),
         [
             "extract",
             "--mapping",
@@ -211,3 +212,12 @@ plan_path: plan.txt
     markdown = out_path.read_text(encoding="utf-8")
     assert "# Lineage" in markdown
     assert "svc.db.curated.metrics" in markdown
+
+
+def test_main_exits_with_install_hint_when_cli_dependencies_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cli, "_load_typer", lambda: (_ for _ in ()).throw(RuntimeError("missing")))
+
+    with pytest.raises(SystemExit, match="missing"):
+        cli.main()
