@@ -236,20 +236,20 @@ pip install "polars-lineage[cli]"
 ```
 
 ```bash
-uv run polars-lineage extract --mapping mapping.yml --out lineage.json
+polars-lineage extract --mapping mapping.yml --out lineage.json
 ```
 
 Choose an output format with `--format`:
 
 ```bash
 # Existing default behavior
-uv run polars-lineage extract --mapping mapping.yml --out lineage-openmetadata.json --format openmetadata
+polars-lineage extract --mapping mapping.yml --out lineage-openmetadata.json --format openmetadata
 
 # Strongly typed custom JSON document
-uv run polars-lineage extract --mapping mapping.yml --out lineage.json --format json
+polars-lineage extract --mapping mapping.yml --out lineage.json --format json
 
 # Human-readable report
-uv run polars-lineage extract --mapping mapping.yml --out lineage.md --format markdown
+polars-lineage extract --mapping mapping.yml --out lineage.md --format markdown
 ```
 
 `mapping.yml` example:

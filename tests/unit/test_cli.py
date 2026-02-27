@@ -1,4 +1,6 @@
 import json
+import sys
+from builtins import __import__ as builtin_import
 from pathlib import Path
 
 import pytest
@@ -217,7 +219,19 @@ plan_path: plan.txt
 def test_main_exits_with_install_hint_when_cli_dependencies_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(cli, "_load_typer", lambda: (_ for _ in ()).throw(RuntimeError("missing")))
+    def _mocked_import(
+        name: str,
+        globals: dict[str, object] | None = None,
+        locals: dict[str, object] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> object:
+        if name == "typer":
+            raise ModuleNotFoundError("No module named 'typer'")
+        return builtin_import(name, globals, locals, fromlist, level)
 
-    with pytest.raises(SystemExit, match="missing"):
+    monkeypatch.delitem(sys.modules, "typer", raising=False)
+    monkeypatch.setattr("builtins.__import__", _mocked_import)
+
+    with pytest.raises(SystemExit, match=r"polars-lineage\[cli\]"):
         cli.main()
