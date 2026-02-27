@@ -22,11 +22,11 @@ def build_app() -> Any:
     typer = _load_typer()
     app = typer.Typer(help="polars-lineage command line tools")
 
-    @app.callback()
+    @app.callback()  # type: ignore[untyped-decorator]
     def callback() -> None:
         """polars-lineage command group."""
 
-    @app.command("extract")
+    @app.command("extract")  # type: ignore[untyped-decorator]
     def extract(
         mapping: Path = typer.Option(..., "--mapping", exists=True, readable=True),
         out: Path = typer.Option(..., "--out"),
