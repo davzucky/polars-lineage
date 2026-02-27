@@ -220,6 +220,10 @@ dependencies = [
     { name = "polars" },
     { name = "pydantic" },
     { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+cli = [
     { name = "typer" },
 ]
 
@@ -228,6 +232,7 @@ dev = [
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "typer" },
     { name = "types-pyyaml" },
 ]
 
@@ -236,14 +241,16 @@ requires-dist = [
     { name = "polars", specifier = ">=1.38.1" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "typer", specifier = ">=0.24.0" },
+    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.24.0" },
 ]
+provides-extras = ["cli"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.15.1" },
+    { name = "typer", specifier = ">=0.24.0" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
 ]
 
