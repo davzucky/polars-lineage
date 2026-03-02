@@ -133,7 +133,7 @@ def _wrap_result_with_mapping(result: Any, mapping: MappingConfig) -> Any:
     return result
 
 
-def with_lineage(
+def _with_lineage(
     lazyframe: pl.LazyFrame, mapping: MappingConfig | dict[str, Any]
 ) -> LineageLazyFrame:
     return LineageLazyFrame(lazyframe=lazyframe, mapping=_normalize_mapping(mapping))
@@ -148,7 +148,7 @@ def add_lazyframe_metadata(
 ) -> LineageLazyFrame:
     normalized_sources = {name: _source_fqn_from_metadata(name, uri)}
 
-    return with_lineage(
+    return _with_lineage(
         lazyframe,
         {
             "sources": normalized_sources,
