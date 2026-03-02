@@ -26,24 +26,15 @@ Guidance for coding agents working in this repository.
 
 ## Public API First
 
-Prefer validating behavior through the public API when possible:
+Prefer validating behavior through the metadata-on-LazyFrame API when possible:
 
-- `polars_lineage.extract_lazyframe_lineage(lazyframe, mapping)`
-
-`mapping` can be:
-
-- `MappingConfig`, or
-- dict with at least:
-  - `sources` (alias -> table FQN)
-  - `destination_table` (table FQN)
+- `import polars_lineage` (registers `LazyFrame.add_metadata`)
+- `lazyframe.add_metadata(name="...", uri="...")`
+- `lineage_lazyframe.extract_lineage()`
 
 ## CLI Notes
 
-CLI command:
-
-- `polars-lineage extract --mapping mapping.yml --out lineage.json`
-
-Current CLI expects `plan_path` in `mapping.yml` and reads plan text from disk.
+- CLI is currently removed in this PoC.
 
 ## Join/Plan Constraints
 
