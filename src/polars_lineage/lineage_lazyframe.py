@@ -6,8 +6,8 @@ from urllib.parse import urlparse
 
 import polars as pl
 
-from polars_lineage.api import extract_lazyframe_lineage
 from polars_lineage.config import MappingConfig
+from polars_lineage.pipeline import extract_lineage_payloads_from_lazyframe
 
 
 def _normalize_mapping(mapping: MappingConfig | dict[str, Any]) -> MappingConfig:
@@ -29,15 +29,15 @@ def _default_destination_fqn(sources: dict[str, str]) -> str:
     return f"derived.lineage.public.{suffix or 'result'}"
 
 
-def _source_fqn_from_metadata(name: str, source_type: str | None, source_url: str) -> str:
-    parsed = urlparse(source_url)
+def _source_fqn_from_metadata(name: str, uri: str) -> str:
+    parsed = urlparse(uri)
     path = parsed.path.strip("/")
     maybe_fqn = path.split("/")[-1]
     fqn_parts = maybe_fqn.split(".")
     if len(fqn_parts) == 4 and all(fqn_parts):
         return ".".join(_sanitize_token(part) for part in fqn_parts)
 
-    service = _sanitize_token(source_type or parsed.scheme or "external")
+    service = _sanitize_token(parsed.scheme or "external")
     database = _sanitize_token(parsed.hostname or "external")
     table = _sanitize_token((path.split("/")[-1] if path else name) or name)
     return f"{service}.{database}.public.{table}"
@@ -97,7 +97,7 @@ class LineageLazyFrame:
     mapping: MappingConfig
 
     def extract_lineage(self) -> list[dict[str, Any]]:
-        return extract_lazyframe_lineage(self.lazyframe, self.mapping)
+        return extract_lineage_payloads_from_lazyframe(self.lazyframe, self.mapping)
 
     def unwrap(self) -> pl.LazyFrame:
         return self.lazyframe
@@ -142,25 +142,11 @@ def with_lineage(
 def add_lazyframe_metadata(
     lazyframe: pl.LazyFrame,
     *,
-    source: str | None = None,
-    sources: dict[str, str] | None = None,
+    name: str,
+    uri: str,
     destination_table: str | None = None,
-    source_alias: str = "source",
-    name: str | None = None,
-    source_type: str | None = None,
-    source_url: str | None = None,
 ) -> LineageLazyFrame:
-    metadata_mode = any(item is not None for item in (name, source_type, source_url))
-
-    if metadata_mode:
-        if name is None or source_url is None:
-            raise ValueError("metadata mode requires `name` and `source_url`")
-        metadata_fqn = _source_fqn_from_metadata(name, source_type, source_url)
-        normalized_sources = {name: metadata_fqn}
-    else:
-        if (source is None) == (sources is None):
-            raise ValueError("provide exactly one of `source` or `sources`")
-        normalized_sources = {source_alias: source} if source is not None else dict(sources or {})
+    normalized_sources = {name: _source_fqn_from_metadata(name, uri)}
 
     return with_lineage(
         lazyframe,
@@ -178,23 +164,15 @@ def register_lazyframe_metadata_method() -> None:
     def _add_metadata_method(
         self: pl.LazyFrame,
         *,
-        source: str | None = None,
-        sources: dict[str, str] | None = None,
+        name: str,
+        uri: str,
         destination_table: str | None = None,
-        source_alias: str = "source",
-        name: str | None = None,
-        source_type: str | None = None,
-        source_url: str | None = None,
     ) -> LineageLazyFrame:
         return add_lazyframe_metadata(
             self,
-            source=source,
-            sources=sources,
-            destination_table=destination_table,
-            source_alias=source_alias,
             name=name,
-            source_type=source_type,
-            source_url=source_url,
+            uri=uri,
+            destination_table=destination_table,
         )
 
     setattr(pl.LazyFrame, "add_metadata", _add_metadata_method)
