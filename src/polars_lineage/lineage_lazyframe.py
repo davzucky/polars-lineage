@@ -146,6 +146,11 @@ def add_lazyframe_metadata(
     uri: str,
     destination_table: str | None = None,
 ) -> LineageLazyFrame:
+    if not name.strip():
+        raise ValueError("name must be non-empty")
+    if not uri.strip():
+        raise ValueError("uri must be non-empty")
+
     normalized_sources = {name: _source_fqn_from_metadata(name, uri)}
 
     return _with_lineage(

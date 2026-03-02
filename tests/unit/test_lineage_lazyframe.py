@@ -53,3 +53,22 @@ def test_lazyframe_metadata_mode_supports_join_workflow() -> None:
     from_entities = {item["edge"]["fromEntity"]["fullyQualifiedName"] for item in lineage}
     assert "svc.db.raw.orders" in from_entities
     assert "https.account.public.list" in from_entities
+
+
+def test_lazyframe_add_metadata_rejects_blank_name_or_uri() -> None:
+    lazyframe = pl.DataFrame({"a": [1]}).lazy()
+
+    name_error = False
+    try:
+        _ = getattr(lazyframe, "add_metadata")(name="   ", uri="postgres://warehouse/orders")
+    except ValueError:
+        name_error = True
+
+    uri_error = False
+    try:
+        _ = getattr(lazyframe, "add_metadata")(name="orders", uri="   ")
+    except ValueError:
+        uri_error = True
+
+    assert name_error
+    assert uri_error
