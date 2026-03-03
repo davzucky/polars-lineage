@@ -92,7 +92,7 @@ def test_lineage_extract_requires_metadata() -> None:
     assert error
 
 
-def test_lineage_render_supports_markdown_and_json_outputs() -> None:
+def test_lineage_to_markdown_and_to_json_outputs() -> None:
     lazyframe = _lineage(pl.DataFrame({"a": [1], "b": [2]}).lazy()).add_source(
         name="orders",
         uri="postgres://warehouse/svc.db.raw.orders",
@@ -100,8 +100,8 @@ def test_lineage_render_supports_markdown_and_json_outputs() -> None:
     )
     projected = lazyframe.select([(pl.col("a") + pl.col("b")).alias("sum")])
 
-    markdown_output = _lineage(projected).render(format="markdown")
-    json_output = _lineage(projected).render(format="json")
+    markdown_output = _lineage(projected).to_markdown()
+    json_output = _lineage(projected).to_json()
 
     assert isinstance(markdown_output, str)
     assert "svc.db.curated.metrics" in markdown_output

@@ -58,7 +58,7 @@ print(lineage)
 markdown = (
     df_orders.join(df_accounts, on="id", how="left")
     .with_columns(pl.col("amount").alias("amount_copy"))
-    .lineage.render(format="markdown")
+    .lineage.to_markdown()
 )
 
 print(markdown)
