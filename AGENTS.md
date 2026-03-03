@@ -28,9 +28,9 @@ Guidance for coding agents working in this repository.
 
 Prefer validating behavior through the metadata-on-LazyFrame API when possible:
 
-- `import polars_lineage` (registers `LazyFrame.add_metadata`)
-- `lazyframe.add_metadata(name="...", uri="...")`
-- `lineage_lazyframe.extract_lineage()`
+- `import polars_lineage` (registers `LazyFrame.lineage`)
+- `lazyframe.lineage.add_source(name="...", uri="...")`
+- `lazyframe.lineage.extract()`
 
 ## CLI Notes
 
