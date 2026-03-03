@@ -65,17 +65,35 @@ def _merge_mapping_for_method(
     if base is None and not others:
         return None
 
-    if method_name == "join" and base is not None and others:
-        right_mapping = others[0]
+    if method_name == "join":
+        if base is None or not others:
+            raise ValueError(
+                "join lineage requires metadata on both frames; call "
+                "`lazyframe.lineage.add_source(name=..., uri=...)` on left and right"
+            )
+        if len(others) != 1:
+            raise ValueError("multiple joins in one parsed plan are currently rejected")
+        if "left" in base.sources and "right" in base.sources:
+            raise ValueError("multiple joins in one parsed plan are currently rejected")
+
+        if "left" in base.sources and "right" in others[0].sources:
+            left_source = base.sources["left"]
+            right_source = others[0].sources["right"]
+        else:
+            if len(base.sources) != 1 or len(others[0].sources) != 1:
+                raise ValueError("multiple joins in one parsed plan are currently rejected")
+            left_source = _first_source_fqn(base)
+            right_source = _first_source_fqn(others[0])
+
         return MappingConfig(
             sources={
-                "left": _first_source_fqn(base),
-                "right": _first_source_fqn(right_mapping),
+                "left": left_source,
+                "right": right_source,
             },
             destination_table=_default_destination_fqn(
                 {
-                    "left": _first_source_fqn(base),
-                    "right": _first_source_fqn(right_mapping),
+                    "left": left_source,
+                    "right": right_source,
                 }
             ),
         )

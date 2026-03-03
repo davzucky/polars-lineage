@@ -89,3 +89,42 @@ def test_lineage_extract_requires_metadata() -> None:
         error = True
 
     assert error
+
+
+def test_join_requires_metadata_on_both_sides() -> None:
+    left = _lineage(pl.DataFrame({"id": [1], "a": [10]}).lazy()).add_source(
+        name="left",
+        uri="postgres://warehouse/svc.db.raw.left",
+    )
+    right = pl.DataFrame({"id": [1], "b": [20]}).lazy()
+
+    error = False
+    try:
+        _ = left.join(right, on="id", how="inner")
+    except ValueError:
+        error = True
+
+    assert error
+
+
+def test_join_rejects_multi_join_mapping() -> None:
+    left = _lineage(pl.DataFrame({"id": [1], "a": [10]}).lazy()).add_source(
+        name="left",
+        uri="postgres://warehouse/svc.db.raw.left",
+    )
+    middle = _lineage(pl.DataFrame({"id": [1], "b": [20]}).lazy()).add_source(
+        name="middle",
+        uri="postgres://warehouse/svc.db.raw.middle",
+    )
+    right = _lineage(pl.DataFrame({"id": [1], "c": [30]}).lazy()).add_source(
+        name="right",
+        uri="postgres://warehouse/svc.db.raw.right",
+    )
+
+    error = False
+    try:
+        _ = left.join(middle, on="id", how="inner").join(right, on="id", how="inner")
+    except ValueError:
+        error = True
+
+    assert error
