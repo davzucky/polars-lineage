@@ -7,8 +7,12 @@ from urllib.parse import urlparse
 import polars as pl
 
 from polars_lineage.config import MappingConfig
+from polars_lineage.exporter import OutputFormat, RenderedLineage
 from polars_lineage.metadata_store import get_mapping, require_mapping, set_mapping
-from polars_lineage.pipeline import extract_lineage_payloads_from_lazyframe
+from polars_lineage.pipeline import (
+    extract_lineage_output_from_lazyframe,
+    extract_lineage_payloads_from_lazyframe,
+)
 
 _PATCHED = False
 _GROUP_BY_PATCHED = False
@@ -214,6 +218,14 @@ class LazyFrameLineageNamespace:
     def extract(self) -> list[dict[str, Any]]:
         mapping = require_mapping(self._lazyframe)
         return extract_lineage_payloads_from_lazyframe(self._lazyframe, mapping)
+
+    def render(self, *, format: OutputFormat = "markdown") -> RenderedLineage:
+        mapping = require_mapping(self._lazyframe)
+        return extract_lineage_output_from_lazyframe(
+            self._lazyframe,
+            mapping,
+            output_format=format,
+        )
 
 
 def register_lineage_namespace() -> None:

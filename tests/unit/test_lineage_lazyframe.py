@@ -1,6 +1,7 @@
 import polars as pl
 
 import polars_lineage
+from polars_lineage.exporter.models import LineageDocument
 
 _ = polars_lineage.__version__
 
@@ -89,6 +90,25 @@ def test_lineage_extract_requires_metadata() -> None:
         error = True
 
     assert error
+
+
+def test_lineage_render_supports_markdown_and_json_outputs() -> None:
+    lazyframe = _lineage(pl.DataFrame({"a": [1], "b": [2]}).lazy()).add_source(
+        name="orders",
+        uri="postgres://warehouse/svc.db.raw.orders",
+        destination_table="svc.db.curated.metrics",
+    )
+    projected = lazyframe.select([(pl.col("a") + pl.col("b")).alias("sum")])
+
+    markdown_output = _lineage(projected).render(format="markdown")
+    json_output = _lineage(projected).render(format="json")
+
+    assert isinstance(markdown_output, str)
+    assert "svc.db.curated.metrics" in markdown_output
+    assert "svc.db.raw.orders" in markdown_output
+
+    assert isinstance(json_output, LineageDocument)
+    assert json_output.destination_table == "svc.db.curated.metrics"
 
 
 def test_join_requires_metadata_on_both_sides() -> None:
