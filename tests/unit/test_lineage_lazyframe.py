@@ -1,7 +1,10 @@
 import polars as pl
+import pytest
 
 import polars_lineage
+from polars_lineage.config import MappingConfig
 from polars_lineage.exporter.models import LineageDocument
+from polars_lineage.lineage_namespace import _merge_mapping_for_method
 
 _ = polars_lineage.__version__
 
@@ -64,32 +67,18 @@ def test_lineage_namespace_supports_join_workflow() -> None:
 def test_lineage_add_source_rejects_blank_name_or_uri() -> None:
     lazyframe = pl.DataFrame({"a": [1]}).lazy()
 
-    name_error = False
-    try:
-        _ = _lineage(lazyframe).add_source(name="   ", uri="postgres://warehouse/orders")
-    except ValueError:
-        name_error = True
+    with pytest.raises(ValueError):
+        _lineage(lazyframe).add_source(name="   ", uri="postgres://warehouse/orders")
 
-    uri_error = False
-    try:
-        _ = _lineage(lazyframe).add_source(name="orders", uri="   ")
-    except ValueError:
-        uri_error = True
-
-    assert name_error
-    assert uri_error
+    with pytest.raises(ValueError):
+        _lineage(lazyframe).add_source(name="orders", uri="   ")
 
 
 def test_lineage_extract_requires_metadata() -> None:
     lazyframe = pl.DataFrame({"a": [1]}).lazy()
 
-    error = False
-    try:
-        _ = _lineage(lazyframe.select(pl.col("a"))).extract()
-    except ValueError:
-        error = True
-
-    assert error
+    with pytest.raises(ValueError):
+        _lineage(lazyframe.select(pl.col("a"))).extract()
 
 
 def test_lineage_to_markdown_and_to_json_outputs() -> None:
@@ -118,13 +107,8 @@ def test_join_requires_metadata_on_both_sides() -> None:
     )
     right = pl.DataFrame({"id": [1], "b": [20]}).lazy()
 
-    error = False
-    try:
+    with pytest.raises(ValueError):
         _ = left.join(right, on="id", how="inner")
-    except ValueError:
-        error = True
-
-    assert error
 
 
 def test_join_rejects_multi_join_mapping() -> None:
@@ -141,10 +125,39 @@ def test_join_rejects_multi_join_mapping() -> None:
         uri="postgres://warehouse/svc.db.raw.right",
     )
 
-    error = False
-    try:
+    with pytest.raises(ValueError):
         _ = left.join(middle, on="id", how="inner").join(right, on="id", how="inner")
-    except ValueError:
-        error = True
 
-    assert error
+
+def test_join_rejects_prejoined_right_operand() -> None:
+    left = _lineage(pl.DataFrame({"id": [1], "a": [10]}).lazy()).add_source(
+        name="left",
+        uri="postgres://warehouse/svc.db.raw.left",
+    )
+    middle = _lineage(pl.DataFrame({"id": [1], "b": [20]}).lazy()).add_source(
+        name="middle",
+        uri="postgres://warehouse/svc.db.raw.middle",
+    )
+    right = _lineage(pl.DataFrame({"id": [1], "c": [30]}).lazy()).add_source(
+        name="right",
+        uri="postgres://warehouse/svc.db.raw.right",
+    )
+
+    prejoined = middle.join(right, on="id", how="inner")
+
+    with pytest.raises(ValueError):
+        _ = left.join(prejoined, on="id", how="inner")
+
+
+def test_non_join_merge_rejects_conflicting_source_aliases() -> None:
+    base = MappingConfig(
+        sources={"shared": "svc.db.public.orders"},
+        destination_table="svc.db.public.metrics",
+    )
+    other = MappingConfig(
+        sources={"shared": "svc.db.public.accounts"},
+        destination_table="svc.db.public.metrics",
+    )
+
+    with pytest.raises(ValueError, match="conflicting source alias mapping"):
+        _merge_mapping_for_method("with_columns", base, [other])

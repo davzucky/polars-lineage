@@ -80,7 +80,9 @@ def _merge_mapping_for_method(
         if "left" in base.sources and "right" in base.sources:
             raise ValueError("multiple joins in one parsed plan are currently rejected")
 
-        if "left" in base.sources and "right" in others[0].sources:
+        base_keys = set(base.sources)
+        other_keys = set(others[0].sources)
+        if base_keys == {"left"} and other_keys == {"right"}:
             left_source = base.sources["left"]
             right_source = others[0].sources["right"]
         else:
@@ -104,15 +106,24 @@ def _merge_mapping_for_method(
 
     seed = base or others[0]
     merged_sources = dict(seed.sources)
-    for other in [] if base is None else others:
+
+    def merge_sources(other: MappingConfig) -> None:
         for alias, fqn in other.sources.items():
-            if alias not in merged_sources:
+            existing = merged_sources.get(alias)
+            if existing is None:
                 merged_sources[alias] = fqn
+                continue
+            if existing != fqn:
+                raise ValueError(
+                    "conflicting source alias mapping: "
+                    f"alias={alias} existing={existing} conflicting={fqn}"
+                )
+
+    for other in [] if base is None else others:
+        merge_sources(other)
     if base is None and len(others) > 1:
         for other in others[1:]:
-            for alias, fqn in other.sources.items():
-                if alias not in merged_sources:
-                    merged_sources[alias] = fqn
+            merge_sources(other)
 
     return MappingConfig(
         sources=merged_sources,
