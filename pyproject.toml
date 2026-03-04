@@ -1,6 +1,6 @@
 [project]
 name = "polars-lineage"
-version = "0.1.5"
+version = "0.1.6"
 description = "Extract column-level lineage from Polars LazyFrame transformations."
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
