@@ -2,8 +2,8 @@
 
 Extract column-level lineage from Polars `LazyFrame` transformations.
 
-This PoC uses a metadata-first workflow: attach metadata to each source `LazyFrame` with
-`add_metadata(...)`, then run `.extract_lineage()` on the wrapped result.
+This PoC uses a metadata-first workflow through a `LazyFrame.lineage` namespace.
+Attach source metadata with `lineage.add_source(...)`, then run `lineage.extract()`.
 
 ## Install and Setup
 
@@ -19,9 +19,9 @@ uv sync --dev
 
 ## Python API (Metadata First)
 
-Importing `polars_lineage` registers `LazyFrame.add_metadata(...)`.
+Importing `polars_lineage` registers `LazyFrame.lineage`.
 
-`add_metadata(...)` accepts:
+`lineage.add_source(...)` accepts:
 
 - `name`: logical source name
 - `uri`: source URI
@@ -33,27 +33,35 @@ Example:
 
 ```python
 import polars as pl
-import polars_lineage  # registers LazyFrame.add_metadata
+import polars_lineage  # registers LazyFrame.lineage namespace
 
 df_orders = (
     pl.DataFrame({"id": [1, 2], "amount": [10, 20]})
     .lazy()
-    .add_metadata(name="orders", uri="postgres://warehouse/svc.db.raw.orders")
+    .lineage.add_source(name="orders", uri="postgres://warehouse/svc.db.raw.orders")
 )
 
 df_accounts = (
     pl.DataFrame({"id": [1, 2], "segment": ["A", "B"]})
     .lazy()
-    .add_metadata(name="accounts", uri="https://crm/accounts")
+    .lineage.add_source(name="accounts", uri="https://crm/accounts")
 )
 
 lineage = (
     df_orders.join(df_accounts, on="id", how="left")
     .with_columns(pl.col("amount").alias("amount_copy"))
-    .extract_lineage()
+    .lineage.extract()
 )
 
 print(lineage)
+
+markdown = (
+    df_orders.join(df_accounts, on="id", how="left")
+    .with_columns(pl.col("amount").alias("amount_copy"))
+    .lineage.to_markdown()
+)
+
+print(markdown)
 ```
 
 URI parsing notes:
@@ -65,11 +73,11 @@ URI parsing notes:
   - schema: `public`
   - table: final URI path segment
 
-## Wrapper Notes
+## Namespace Notes
 
-- `LineageLazyFrame` preserves metadata through chained `LazyFrame` operations.
-- Joining two wrapped frames merges source metadata as `left` and `right`.
-- `.extract_lineage()` returns deterministic OpenMetadata-style payloads.
+- `lineage.add_source(...)` returns the same `pl.LazyFrame` instance.
+- Metadata is propagated through common lazy operations (including joins).
+- `lineage.extract()` returns deterministic OpenMetadata-style payloads.
 
 ## Current Capabilities
 
@@ -87,7 +95,7 @@ URI parsing notes:
 
 - Multiple joins in one parsed plan are rejected.
 - Ambiguous non-join overlapping columns are rejected with clear errors.
-- For static type checking, dynamically added `LazyFrame.add_metadata(...)` may require stubs.
+- For static type checking, dynamically registered `LazyFrame.lineage` may require stubs.
 
 ## Development
 
