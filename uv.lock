@@ -172,7 +172,7 @@ wheels = [
 
 [[package]]
 name = "polars-lineage"
-version = "0.1.4"
+version = "0.1.5"
 source = { editable = "." }
 dependencies = [
     { name = "polars" },
@@ -191,7 +191,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "polars", specifier = ">=1.38.1" },
-    { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "pydantic", specifier = ">=2.11" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 
