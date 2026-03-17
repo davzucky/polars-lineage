@@ -1,4 +1,8 @@
+import json
+from datetime import date
+
 import polars as pl
+import pytest
 
 import polars_lineage
 
@@ -63,3 +67,54 @@ def test_e2e_does_not_emit_self_lineage_for_literal_columns() -> None:
     for payload in payloads:
         for entry in payload["edge"]["lineageDetails"]["columnsLineage"]:
             assert not (entry["toColumn"] == "one" and entry["fromColumns"] == ["one"])
+
+
+def _assert_static_today_scan_lineage(
+    lazyframe: pl.LazyFrame, source_name: str, source_uri: str
+) -> None:
+    lazyframe = _lineage(lazyframe).add_source(
+        name=source_name,
+        uri=source_uri,
+        destination_table="svc.db.curated.orders_parquet",
+    )
+    transformed = lazyframe.with_columns(pl.lit(date.today()).alias("loaded_at"))
+    assert transformed.collect_schema().names() == ["id", "sku", "qty", "loaded_at"]
+    payloads = _lineage(transformed).extract()
+    assert len(payloads) == 1
+    columns_lineage = payloads[0]["edge"]["lineageDetails"]["columnsLineage"]
+    to_columns = {item["toColumn"] for item in columns_lineage}
+    assert to_columns == {"id", "sku", "qty"}
+    assert "loaded_at" not in to_columns
+
+
+@pytest.mark.parametrize("scan_kind", ["csv", "parquet", "ndjson", "json"])
+def test_e2e_scan_inputs_with_static_today_column_preserve_source_lineage(
+    tmp_path,
+    scan_kind: str,
+) -> None:
+    frame = pl.DataFrame({"id": [1], "sku": ["A"], "qty": [2]})
+
+    if scan_kind == "csv":
+        source_path = tmp_path / "orders.csv"
+        source_path.write_text("id,sku,qty\n1,A,2\n", encoding="utf-8")
+        lazyframe = pl.scan_csv(str(source_path))
+    elif scan_kind == "parquet":
+        source_path = tmp_path / "orders.parquet"
+        frame.write_parquet(source_path)
+        lazyframe = pl.scan_parquet(str(source_path))
+    elif scan_kind == "ndjson":
+        source_path = tmp_path / "orders.ndjson"
+        frame.write_ndjson(source_path)
+        lazyframe = pl.scan_ndjson(str(source_path))
+    else:
+        if not hasattr(pl, "scan_json"):
+            pytest.skip("polars scan_json is not available in this version")
+        source_path = tmp_path / "orders.json"
+        source_path.write_text(json.dumps([{"id": 1, "sku": "A", "qty": 2}]), encoding="utf-8")
+        lazyframe = pl.scan_json(str(source_path))
+
+    _assert_static_today_scan_lineage(
+        lazyframe=lazyframe,
+        source_name=f"orders_{scan_kind}",
+        source_uri=f"s3://warehouse/raw/orders.{scan_kind}",
+    )
