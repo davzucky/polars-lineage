@@ -10,7 +10,7 @@ from polars_lineage.config import MappingConfig
 from polars_lineage.exporter import OutputFormat, RenderedLineage, export_lineage
 from polars_lineage.exporter.models import LineageDocument
 from polars_lineage.extractor.explain_tree import extract_plan_lineage
-from polars_lineage.ir import ColumnLineage
+from polars_lineage.ir import ColumnLineage, ColumnRef, DatasetRef
 from polars_lineage.resolver import resolve_transitive_lineage
 from polars_lineage.validation import validate_lineage
 
@@ -26,7 +26,30 @@ def extract_lineage_ir_from_lazyframe(
     lazyframe: pl.LazyFrame, mapping: MappingConfig
 ) -> list[ColumnLineage]:
     plan = lazyframe.explain(format="tree", optimized=False)
-    return extract_lineage_ir_from_plan(plan, mapping)
+    extracted = extract_plan_lineage(plan, mapping)
+
+    if len(mapping.sources) == 1:
+        output_columns = set(lazyframe.collect_schema().names())
+        covered_columns = {entry.to_column.column for entry in extracted}
+        passthrough_columns = sorted(output_columns - covered_columns)
+        if passthrough_columns:
+            source_dataset = DatasetRef.from_fqn(next(iter(mapping.sources.values())))
+            destination_dataset = DatasetRef.from_fqn(mapping.destination_table)
+            extracted.extend(
+                [
+                    ColumnLineage(
+                        from_columns=(ColumnRef(dataset=source_dataset, column=column_name),),
+                        to_column=ColumnRef(dataset=destination_dataset, column=column_name),
+                        function=f'col("{column_name}")',
+                        confidence="inferred",
+                    )
+                    for column_name in passthrough_columns
+                ]
+            )
+
+    resolved = resolve_transitive_lineage(extracted)
+    validate_lineage(resolved)
+    return resolved
 
 
 def extract_lineage_output_from_plan(
