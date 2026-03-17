@@ -1,5 +1,5 @@
-from datetime import date
 import json
+from datetime import date
 
 import polars as pl
 import pytest
